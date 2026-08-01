@@ -20,7 +20,7 @@ pub struct Refund<'info> {
     pub mint_a: InterfaceAccount<'info, Mint>,
 
     #[account(
-        mut,
+        mut, // init_if_needed ??
         associated_token::mint = mint_a,
         associated_token::authority = maker,
         associated_token::token_program = token_program

@@ -143,7 +143,7 @@ describe("escrow-anchor", () => {
 
   });
 
-  xit("Refund", async () => {
+  it("Refund", async () => {
     const tx = await program.methods
     .refund()
     .accounts({ ...accounts })

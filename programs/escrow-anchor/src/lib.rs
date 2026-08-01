@@ -9,7 +9,7 @@ pub use instructions::*;
 pub use state::*;
 pub use events::*;
 
-declare_id!("HgPZjRY7jDXLFsdngP13ruvYutb46WQ3ZwMCUxZfT9Rp");
+declare_id!("8uravPHmsEby816j2dwkjN7Qxcw9FwFGtnnv9pov4L4g");
 
 #[program]
 pub mod escrow_anchor {
