@@ -1,96 +1,98 @@
-# Escrow-Anchor
+# escrow-anchor: a token escrow on Solana, built with Anchor
 
-A Solana Anchor-based program implementing a token escrow system.
+A trustless two-party token swap written in Rust with Anchor. A maker locks up token A and says how much token B they want; any taker who pays that amount of token B gets the token A, in one atomic transaction. It's part of my **Solana from first principles** course: the code here is what we build on camera, line by line.
 
-## Overview
+> **Watch the lessons:** [Part 1: Architecture](https://youtu.be/JiSAgNe14oQ) · [Part 2: Make, Take, Refund in Anchor](https://youtu.be/EPobspAcdNo) · [Part 3: Testing with Surfpool + TypeScript](https://youtu.be/cx_uz2LmAWs)
+>
+> Full course: [Solana from first principles](https://www.youtube.com/playlist?list=PLRR3UvNYzm00)
 
-Escrow-Anchor is a smart contract (on Solana, using the Anchor framework) that facilitates a trustless escrow between two parties exchanging different tokens. It allows a "maker" to deposit tokens into escrow, specify what they want in return, and a "taker" to fulfill the other side of the trade. The contract manages the funds and ensures that tokens are exchanged atomically or refunded if the deal is not completed.
+By the end you'll understand:
 
-## Features
+- how a program holds SPL tokens in a vault owned by a PDA
+- how one `seed` lets a single maker open many escrows at once
+- why every account a user passes in has to be checked against stored state (`has_one`)
+- how to close token accounts and program accounts and return the rent
+- how to test the whole flow against a local validator (Surfpool), including Token-2022
 
-- **Initialize Escrow**: The maker deposits token A into escrow, specifying the amount and the token B they wish to receive.
-- **Atomic Exchange**: The taker deposits token B; the contract swaps tokens between parties, ensuring both sides are fully satisfied or the transaction fails.
-- **Refund Option**: If the deal is not finalized, the maker can refund their tokens from escrow.
-- **Event Emissions**: Emits events (`MakeEvent`, `TakeEvent`, `RefundEvent`) for on-chain monitoring and integration.
+## What the program does
 
-## How It Works
+| Instruction | Who calls it | What it does |
+| --- | --- | --- |
+| `make(seed, deposit_amt, receive_amt)` | maker | Creates the escrow, moves `deposit_amt` of token A into the vault, records that the maker wants `receive_amt` of token B |
+| `take()` | taker | Pays `receive_amt` of token B to the maker, receives all of token A from the vault, closes the vault and the escrow |
+| `refund()` | maker | Takes token A back out of the vault and closes the vault and the escrow |
 
-1. **Make**: The maker calls the `make` instruction, depositing a specified amount of token A and specifying how much token B they want in return. An escrow account is initialized to store state and funds.
-   
-2. **Take**: The taker calls the `take` instruction, depositing the required amount of token B. Upon success, token A is sent from escrow to the taker, and token B is sent to the maker. The escrow vault is closed.
+Each instruction emits an event (`MakeEvent`, `TakeEvent`, `RefundEvent`) so indexers and frontends can follow offers.
 
-3. **Refund**: If no taker fulfills the offer, the maker can call `refund` to retrieve their token A from escrow and close the vault.
+## Accounts
 
-### Main Data Structure
-
-```rust
-pub struct Escrow {
-    pub seed: u64,
-    pub maker: Pubkey,
-    pub mint_a: Pubkey,
-    pub mint_b: Pubkey,
-    pub receive_amt: u64,
-    pub bump: u8,
-}
+```
+Escrow PDA     seeds = ["escrow", maker, seed (u64 LE)]   stores maker, mint_a, mint_b, receive_amt, bump
+ └─ vault      ATA(mint_a, owner = Escrow)                 holds the maker's token A
 ```
 
-## Usage
+- **Escrow** remembers the terms of the deal. The `seed` lets one maker run many escrows side by side.
+- **Vault** is the escrow's associated token account for token A. Only the program can move tokens out, by signing with the escrow's seeds.
+- Accounts use `TokenInterface`, so the same program works with both the classic Token program and Token-2022 (the tests use Token-2022).
 
-### Clone the Repo
+## The checks that make it safe
+
+`take` is called by a stranger, so it can't trust any account it's given. The escrow account checks:
+
+```rust
+#[account(
+    mut,
+    close = maker,
+    has_one = maker,
+    has_one = mint_a,
+    has_one = mint_b,
+    seeds = [b"escrow", maker.key().as_ref(), escrow.seed.to_le_bytes().as_ref()],
+    bump = escrow.bump,
+)]
+pub escrow: Account<'info, Escrow>,
+```
+
+`has_one = mint_b` is the important one. Without it, a taker could pass in a worthless token they minted themselves as `mint_b`, "pay" with it, and still walk away with the maker's token A. The test suite includes this attack and expects it to fail.
+
+## Run it
+
+Prerequisites: Rust, the Solana CLI, Anchor, Node.js + Yarn, and [Surfpool](https://surfpool.run).
 
 ```bash
 git clone https://github.com/princedotrs/escrow-anchor.git
 cd escrow-anchor
-```
-
-### Install Dependencies
-
-```bash
 yarn install
-```
-
-### Build the Project
-
-```bash
 anchor build
+
+# terminal 1: local validator
+surfpool start
+
+# terminal 2: run the tests
+anchor test --skip-local-validator
 ```
 
-### Test the Project
+The test suite (`tests/escrow-anchor.ts`) creates three Token-2022 mints, then: makes an escrow, tries to take it with the wrong mint (rejected), takes it properly, makes a second escrow and refunds it. Event listeners print each emitted event.
 
-```bash
-anchor test
+## Project layout
+
+```
+programs/escrow-anchor/src/
+├── lib.rs              # instruction entry points
+├── state.rs            # Escrow account
+├── events.rs           # MakeEvent, TakeEvent, RefundEvent
+└── instructions/
+    ├── make.rs
+    ├── take.rs
+    └── refund.rs
+tests/escrow-anchor.ts  # end-to-end tests
 ```
 
-## Example Flow
+## Ideas to extend it
 
-- **Airdrop and mint tokens** for maker and taker accounts.
-- Maker creates escrow by calling `make`, funds are deposited.
-- Taker fulfills the deal by calling `take`, token swap occurs.
-- If no taker, maker can call `refund` to reclaim their tokens.
-
-## Key Files
-
-- `programs/escrow-anchor/src/lib.rs`: Anchor program logic and instruction definitions.
-- `programs/escrow-anchor/src/instructions/`: Individual instruction handlers (`make`, `take`, `refund`).
-- `programs/escrow-anchor/src/state.rs`: Escrow account state.
-- `tests/escrow-anchor.ts`: Integration tests covering end-to-end flows.
-
-## Events
-
-- `MakeEvent`: Emitted when escrow is created.
-- `TakeEvent`: Emitted when escrow is completed by taker.
-- `RefundEvent`: Emitted when maker refunds their tokens.
-
-## Requirements
-
-- Node.js, Yarn
-- Solana CLI tools
-- Anchor CLI
+- Add an expiry, after which only `refund` works
+- Let the maker name a specific taker
+- Allow partial fills, where a taker buys part of the offer
 
 ## License
 
 MIT
-
----
-
-For more details, see the program code and the test suite.
