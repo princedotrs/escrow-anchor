@@ -1,7 +1,5 @@
 # escrow-anchor: a token escrow on Solana, built with Anchor
 
-[![CI](https://github.com/princedotrs/escrow-anchor/actions/workflows/ci.yml/badge.svg)](https://github.com/princedotrs/escrow-anchor/actions/workflows/ci.yml)
-
 A trustless two-party token swap written in Rust with Anchor. A maker locks up token A and says how much token B they want; any taker who pays that amount of token B gets the token A, in one atomic transaction. It's part of my **Solana from first principles** course: the code here is what we build on camera, line by line.
 
 > **Watch the lessons:** [Part 1: Architecture](https://youtu.be/JiSAgNe14oQ) · [Part 2: Make, Take, Refund in Anchor](https://youtu.be/EPobspAcdNo) · [Part 3: Testing with Surfpool + TypeScript](https://youtu.be/cx_uz2LmAWs)
