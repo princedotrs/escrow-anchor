@@ -39,7 +39,7 @@ pub struct Escrow {
 ### Clone the Repo
 
 ```bash
-git clone https://github.com/prince981620/escrow-anchor.git
+git clone https://github.com/princedotrs/escrow-anchor.git
 cd escrow-anchor
 ```
 
